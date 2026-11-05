@@ -1,0 +1,60 @@
+name: Build unsigned IPA
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          ls /Applications | grep -i xcode || true
+          sudo xcode-select -s /Applications/Xcode.app || true
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build unsigned (.app)
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project WezCryptMAX.xcodeproj \
+            -scheme WezCryptMAX \
+            -configuration Release \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            -derivedDataPath "$PWD/build/DD"
+          find build/DD/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app"
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP=$(find build/DD/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          echo "Packaging $APP"
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          # Belt and braces: the artifact must carry no signature at all.
+          codesign --remove-signature "Payload/$(basename "$APP")" 2>/dev/null || true
+          rm -rf "Payload/$(basename "$APP")/_CodeSignature"
+          zip -qry WezCryptMAX-unsigned.ipa Payload
+          ls -lh WezCryptMAX-unsigned.ipa
+          unzip -l WezCryptMAX-unsigned.ipa | head -30
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WezCryptMAX-unsigned-ipa
+          path: WezCryptMAX-unsigned.ipa
+          if-no-files-found: error
