@@ -6,15 +6,18 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Select Xcode
         run: |
-          ls /Applications | grep -i xcode || true
-          sudo xcode-select -s /Applications/Xcode.app || true
+          ls -d /Applications/Xcode*.app
+          # XcodeGen (current) emits project format 77, which needs Xcode 16+.
+          # Always select the newest Xcode installed on the runner.
+          LATEST=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$LATEST" ]; then sudo xcode-select -s "$LATEST"; fi
           xcodebuild -version
 
       - name: Install XcodeGen
